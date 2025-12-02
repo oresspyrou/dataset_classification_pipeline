@@ -1,77 +1,77 @@
 import os
 import pandas as pd
 import numpy as np
-from datetime import datetime
+import logging
+import sys
 
-# ==========================================
-# ΡΥΘΜΙΣΕΙΣ (PATHS)
-# ==========================================
-# Βρίσκουμε αυτόματα το path, υποθέτοντας ότι τρέχουμε το script από το root του project
-BASE_DIR = os.getcwd() 
+BASE_DIR = os.getcwd() #root
 RAW_DATA_PATH = os.path.join(BASE_DIR, 'data', 'raw')
 OUTPUT_PATH = os.path.join(BASE_DIR, 'data', 'processed', 'spectral_dataset.csv')
 
-# Ρυθμίσεις αρχείων
-SKIP_LINES = 8 
-DATA_COL_INDEX = 3  # Η στήλη με το Scope/Absorbance
+LOG_DIR = os.path.join(BASE_DIR, 'logs')
+os.makedirs(LOG_DIR, exist_ok=True)
 
-# ==========================================
-# ΛΟΓΙΚΗ ΕΠΕΞΕΡΓΑΣΙΑΣ
-# ==========================================
+LOG_FILE = os.path.join(LOG_DIR, 'dataset_creation_pipeline.log')
+
+SKIP_LINES = 8 
+DATA_COL_INDEX = 3 
+
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.StreamHandler(sys.stdout), 
+        logging.FileHandler(LOG_FILE, mode='a', encoding='utf-8')
+    ]
+)
+logger = logging.getLogger(__name__)
 
 def create_dataset():
     data_rows = []
     feature_names = None
     
-    print(f"🚀 Έναρξη διαδικασίας...")
-    print(f"📂 Ανάγνωση από: {RAW_DATA_PATH}")
+    logger.info("Starting dataset creation...")
 
-    # Έλεγχος αν υπάρχει ο φάκελος
     if not os.path.exists(RAW_DATA_PATH):
-        print(f"❌ ΣΦΑΛΜΑ: Δεν βρέθηκε ο φάκελος {RAW_DATA_PATH}")
-        print("   Βεβαιώσου ότι έβαλες τα δεδομένα στο 'data/raw/'")
-        return
+        logger.error(f"CRITICAL: The data wasn't found on: {RAW_DATA_PATH}")
 
-    # Βρίσκουμε τις κλάσεις (τους φακέλους)
+        raise FileNotFoundError(f"Missing Data Directory: {RAW_DATA_PATH}")
+    
     classes = [d for d in os.listdir(RAW_DATA_PATH) if os.path.isdir(os.path.join(RAW_DATA_PATH, d))]
     
     if not classes:
-        print("❌ Δεν βρέθηκαν φάκελοι δεδομένων!")
-        return
-
-    print(f"   Βρέθηκαν {len(classes)} κλάσεις (φάκελοι).")
+        logger.warning(f"The folder {RAW_DATA_PATH}, is empty.")
+        logger.warning("No dataset can be produced.")
+        
+        return False
+    
+    logger.info(f"Number of classes found: {len(classes)}. Beginning processing...")
 
     for class_name in classes:
         class_folder = os.path.join(RAW_DATA_PATH, class_name)
         files = os.listdir(class_folder)
         
-        # Μετρητής για να βλέπουμε πρόοδο
         processed_count = 0
-        
+
         for filename in files:
             if filename.endswith(".txt"):
                 file_path = os.path.join(class_folder, filename)
                 
-                try:
-                    # Διάβασμα αρχείου
-                    df = pd.read_csv(file_path, 
-                                     sep=';', 
-                                     skiprows=SKIP_LINES, 
-                                     header=None, 
-                                     engine='python',
-                                     usecols=[0, DATA_COL_INDEX]) 
-                    
+                try: 
+                    df = pd.read_csv(file_path, sep=';', skiprows=SKIP_LINES, header=None, engine='python', usecols=[0, DATA_COL_INDEX]) 
+                                      
                     wavelengths = df[0].values
                     values = df[DATA_COL_INDEX].values
                     
-                    # Ορισμός Επικεφαλίδων (μόνο την πρώτη φορά)
                     if feature_names is None:
                         feature_names = [f"wl_{w:.3f}" for w in wavelengths]
-                        print(f"ℹ️  Διαστάσεις φάσματος: {len(feature_names)} σημεία.")
+
+                        logger.info(f"Detected {len(feature_names)} spectral features.")
 
                     # Έλεγχος εγκυρότητας
                     if len(values) != len(feature_names):
-                        continue # Skip bad files
+                        logger.warning(f"SKIPPING {filename}: Wrong dimentions: ({len(values)}, should have been:{len(feature_names)})")
+                        continue
 
                     # Δημιουργία ID
                     clean_fname = filename.rsplit('.', 1)[0]
@@ -89,15 +89,12 @@ def create_dataset():
                     processed_count += 1
                     
                 except Exception as e:
-                    print(f"⚠️ Error in {filename}: {e}")
+                    logger.warning(f"Fail to read: {filename}. Cause: {e}")
         
-        print(f"   ✅ {class_name}: Επεξεργάστηκαν {processed_count} αρχεία.")
+        logger.info(f"Class processed:'{class_name}': {processed_count} files added.")
 
-    # ==========================================
-    # ΑΠΟΘΗΚΕΥΣΗ
-    # ==========================================
     if data_rows:
-        print("💾 Δημιουργία DataFrame...")
+        logger.info(f"Creating final dataframe with {len(data_rows)} records...")
         final_df = pd.DataFrame(data_rows)
         
         # Τακτοποίηση στηλών
@@ -108,12 +105,14 @@ def create_dataset():
         os.makedirs(os.path.dirname(OUTPUT_PATH), exist_ok=True)
         
         final_df.to_csv(OUTPUT_PATH, index=False)
-        print("------------------------------------------------")
-        print(f"🎉 ΕΠΙΤΥΧΙΑ! Το Dataset δημιουργήθηκε.")
-        print(f"📍 Αποθηκεύτηκε στο: {OUTPUT_PATH}")
-        print(f"📊 Μέγεθος: {final_df.shape}")
+        logger.info("------------------------------------------------")
+        logger.info("PROCESS COMPLETED SUCCESSFULLY")
+        logger.info(f"The dataset is saved here: {OUTPUT_PATH}")
+        logger.info(f"Dimentions: {final_df.shape} (Rows, Collumns)")
     else:
-        print("⚠️ Δεν βρέθηκαν δεδομένα για αποθήκευση.")
+        logger.warning("The list of data rows is empty.")
+        logger.warning("No .txt files were processed.")
+        logger.warning("Check the folder data\raw for the correct file types.")
 
 if __name__ == "__main__":
     create_dataset()
