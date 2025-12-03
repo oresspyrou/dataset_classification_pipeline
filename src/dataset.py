@@ -3,6 +3,7 @@ import pandas as pd
 import numpy as np
 import logging
 import sys
+from tqdm import tqdm
 
 BASE_DIR = os.getcwd() #root
 RAW_DATA_PATH = os.path.join(BASE_DIR, 'data', 'raw')
@@ -47,7 +48,7 @@ def create_dataset():
     
     logger.info(f"Number of classes found: {len(classes)}. Beginning processing...")
 
-    for class_name in classes:
+    for class_name in tqdm(classes, desc="Processing Classes", unit="class"):
         class_folder = os.path.join(RAW_DATA_PATH, class_name)
         files = os.listdir(class_folder)
         
@@ -91,7 +92,7 @@ def create_dataset():
                 except Exception as e:
                     logger.warning(f"Fail to read: {filename}. Cause: {e}")
         
-        logger.info(f"Class processed:'{class_name}': {processed_count} files added.")
+        logger.debug(f"Class processed '{class_name}': {processed_count} files added.")
 
     if data_rows:
         logger.info(f"Creating final dataframe with {len(data_rows)} records...")
