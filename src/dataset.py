@@ -4,44 +4,65 @@ import numpy as np
 import logging
 import sys
 from tqdm import tqdm
+from dataclasses import dataclass
 
-BASE_DIR = os.getcwd() #root
-RAW_DATA_PATH = os.path.join(BASE_DIR, 'data', 'raw')
-OUTPUT_PATH = os.path.join(BASE_DIR, 'data', 'processed', 'spectral_dataset.csv')
+@dataclass
+class ProjectConfig:
 
-LOG_DIR = os.path.join(BASE_DIR, 'logs')
-os.makedirs(LOG_DIR, exist_ok=True)
+    base_dir: str = os.getcwd()
+    
+    @property
+    def raw_data_path(self):
+        return os.path.join(self.base_dir, 'data', 'raw')
+    
+    @property
+    def output_path(self):
+        return os.path.join(self.base_dir, 'data', 'processed', 'spectral_dataset.csv')
+    
+    @property
+    def log_dir(self):
+        return os.path.join(self.base_dir, 'logs')
+    
+    @property
+    def log_file(self):
+        return os.path.join(self.log_dir, 'dataset_creation_pipeline.log')
 
-LOG_FILE = os.path.join(LOG_DIR, 'dataset_creation_pipeline.log')
+    skip_lines: int = 8
+    data_col_index: int = 3
+    separator: str = ';'
+    file_extension: str = '.txt'
 
-SKIP_LINES = 8 
-DATA_COL_INDEX = 3 
+config = ProjectConfig()
+
+os.makedirs(config.log_dir, exist_ok=True) 
 
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s',
     handlers=[
         logging.StreamHandler(sys.stdout), 
-        logging.FileHandler(LOG_FILE, mode='a', encoding='utf-8')
+        logging.FileHandler(config.log_file, mode='a', encoding='utf-8')
     ]
 )
-logger = logging.getLogger(__name__)
 
-def create_dataset():
+logger = logging.getLogger(__name__)    
+
+def create_dataset(cfg: ProjectConfig):
     data_rows = []
     feature_names = None
     
     logger.info("Starting dataset creation...")
+    logger.info(f"Configuration: Skip Lines={cfg.skip_lines}, Col Index={cfg.data_col_index}")
 
-    if not os.path.exists(RAW_DATA_PATH):
-        logger.error(f"CRITICAL: The data wasn't found on: {RAW_DATA_PATH}")
+    if not os.path.exists(cfg.raw_data_path):
+        logger.error(f"CRITICAL: The data wasn't found on: {cfg.raw_data_path}")
 
-        raise FileNotFoundError(f"Missing Data Directory: {RAW_DATA_PATH}")
+        raise FileNotFoundError(f"Missing Data Directory: {cfg.raw_data_path}")
     
-    classes = [d for d in os.listdir(RAW_DATA_PATH) if os.path.isdir(os.path.join(RAW_DATA_PATH, d))]
+    classes = [d for d in os.listdir(cfg.raw_data_path) if os.path.isdir(os.path.join(cfg.raw_data_path, d))]
     
     if not classes:
-        logger.warning(f"The folder {RAW_DATA_PATH}, is empty.")
+        logger.warning(f"The folder {cfg.raw_data_path}, is empty.")
         logger.warning("No dataset can be produced.")
         
         return False
@@ -49,7 +70,7 @@ def create_dataset():
     logger.info(f"Number of classes found: {len(classes)}. Beginning processing...")
 
     for class_name in tqdm(classes, desc="Processing Classes", unit="class"):
-        class_folder = os.path.join(RAW_DATA_PATH, class_name)
+        class_folder = os.path.join(cfg.raw_data_path, class_name)
         files = os.listdir(class_folder)
         
         processed_count = 0
@@ -59,10 +80,10 @@ def create_dataset():
                 file_path = os.path.join(class_folder, filename)
                 
                 try: 
-                    df = pd.read_csv(file_path, sep=';', skiprows=SKIP_LINES, header=None, engine='python', usecols=[0, DATA_COL_INDEX]) 
+                    df = pd.read_csv(file_path, sep=';', skiprows=cfg.skip_lines, header=None, engine='python', usecols=[0, cfg.data_col_index]) 
                                       
                     wavelengths = df[0].values
-                    values = df[DATA_COL_INDEX].values
+                    values = df[cfg.data_col_index].values
                     
                     if feature_names is None:
                         feature_names = [f"wl_{w:.3f}" for w in wavelengths]
@@ -103,12 +124,12 @@ def create_dataset():
         final_df = final_df[cols]
         
         # Δημιουργία φακέλου processed αν δεν υπάρχει
-        os.makedirs(os.path.dirname(OUTPUT_PATH), exist_ok=True)
+        os.makedirs(os.path.dirname(cfg.output_path), exist_ok=True)
         
-        final_df.to_csv(OUTPUT_PATH, index=False)
+        final_df.to_csv(cfg.output_path, index=False)
         logger.info("------------------------------------------------")
         logger.info("PROCESS COMPLETED SUCCESSFULLY")
-        logger.info(f"The dataset is saved here: {OUTPUT_PATH}")
+        logger.info(f"The dataset is saved here: {cfg.output_path}")
         logger.info(f"Dimentions: {final_df.shape} (Rows, Collumns)")
     else:
         logger.warning("The list of data rows is empty.")
@@ -116,4 +137,4 @@ def create_dataset():
         logger.warning("Check the folder data\raw for the correct file types.")
 
 if __name__ == "__main__":
-    create_dataset()
+    create_dataset(config)
