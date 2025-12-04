@@ -5,39 +5,10 @@ import logging
 import sys
 from tqdm import tqdm
 from dataclasses import dataclass
+from pydantic import BaseModel, ConfigDict
+import src.config as ProjectConfig
 
-@dataclass
-class ProjectConfig:
-    _src_dir = os.path.dirname(os.path.abspath(__file__))
-    base_dir: str = os.path.dirname(_src_dir)
-    
-    @property
-    def raw_data_path(self):
-        return os.path.join(self.base_dir, 'data', 'raw')
-    
-    @property
-    def output_path(self):
-        return os.path.join(self.base_dir, 'data', 'processed', 'spectral_dataset_enriched.csv')
-    
-    @property
-    def log_dir(self):
-        return os.path.join(self.base_dir, 'logs')
-    
-    @property
-    def log_file(self):
-        return os.path.join(self.log_dir, 'dataset_creation_pipeline.log')
 
-    skip_lines: int = 8
-    data_col_index: int = 3
-    separator: str = ';'
-    file_extension: str = '.txt'
-    
-    folder_name_delimiter: str = '_'
-    default_unknown_value: str = "Unknown" 
-
-config = ProjectConfig()
-
-os.makedirs(config.log_dir, exist_ok=True) 
 
 logging.basicConfig(
     level=logging.DEBUG,
