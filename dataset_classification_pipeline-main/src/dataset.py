@@ -8,7 +8,7 @@ from dataclasses import dataclass
 
 @dataclass
 class ProjectConfig:
-    _src_dir = os.path.dirname(os.path.abspath(__file__))
+    _src_dir = os.path.dirname(os.path.abspath(__file__))#ggs
     base_dir: str = os.path.dirname(_src_dir)
     
     @property
