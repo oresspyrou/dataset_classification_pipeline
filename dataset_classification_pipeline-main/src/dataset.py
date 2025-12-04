@@ -8,6 +8,29 @@ from dataclasses import dataclass
 from pydantic import BaseModel, ConfigDict
 import src.config as ProjectConfig
 
+<<<<<<< HEAD
+=======
+@dataclass
+class ProjectConfig:
+    _src_dir = os.path.dirname(os.path.abspath(__file__))#ggs
+    base_dir: str = os.path.dirname(_src_dir)
+    
+    @property
+    def raw_data_path(self):
+        return os.path.join(self.base_dir, 'data', 'raw')
+    
+    @property
+    def output_path(self):
+        return os.path.join(self.base_dir, 'data', 'processed', 'spectral_dataset_enriched.csv')
+    
+    @property
+    def log_dir(self):
+        return os.path.join(self.base_dir, 'logs')
+    
+    @property
+    def log_file(self):
+        return os.path.join(self.log_dir, 'dataset_creation_pipeline.log')
+>>>>>>> ae6833887912b525384bde7b91048ffe345901b0
 
 
 logging.basicConfig(
