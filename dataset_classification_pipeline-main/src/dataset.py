@@ -71,16 +71,10 @@ class SampleMetadata(BaseModel):
         if len(components) != 6:
             raise ValueError(f"Structure Error: Found {len(components)} components, expected 6.")
             
-        #Check 3 : First component is not empty and starts with digit 
-        if not components[0] or not components[0][0].isdigit():
+        #Check 3 : First component is not empty 
+        if not components[0]:  
             raise ValueError(f"Format Error: First component '{components[0]}' must start with a digit.")
             
-        # Check 4: Last 3 components must be '0' or '0%'
-        # Indices: 0, 1, 2, 3(Adulteration), 4(Zero), 5(Zero) -> Ελέγχουμε  4, 5
-        last_two = components[3:]
-        for idx, val in enumerate(last_two):
-            if val not in ["0", "0%"]:
-                raise ValueError(f"Content Error: Component {idx+4} is '{val}'. Expected '0' or '0%'.")
         
         # Αν όλα πήγαν καλά, αποθηκεύουμε τις τιμές
         self.sample_code = components[0]
@@ -193,7 +187,7 @@ def create_dataset(cfg: ProjectConfig):
         class_folder = os.path.join(cfg.raw_data_path, folder_name)
         files = os.listdir(class_folder)
 
-        # Loop ανά αρχείο (χωρίς IF)
+        # Loop ανά αρχείο 
         for filename in files:
             try:
                 # --- VALIDATION & READING ΑΡΧΕΙΟΥ ---
