@@ -4,28 +4,27 @@ import numpy as np
 import logging
 import sys
 from tqdm import tqdm
-#from dataclasses import dataclass
-from pydantic import BaseModel, ConfigDict
 from src.config import config, ProjectConfig
+from src.validation import SpectralValidator, SpectralRecord
+
+os.makedirs(config.log_dir, exist_ok=True) 
 
 logging.basicConfig(
-    level=logging.DEBUG,
+    level=logging.INFO, 
     format='%(asctime)s - %(levelname)s - %(message)s',
     handlers=[
         logging.StreamHandler(sys.stdout), 
-        logging.FileHandler(ProjectConfig.log_file, mode='a', encoding='utf-8')
+        logging.FileHandler(config.log_file, mode='a', encoding='utf-8')
     ]
 )
-
 logger = logging.getLogger(__name__)    
 
 def parse_folder_metadata(folder_name: str, cfg: ProjectConfig) -> dict:
-   
     parts = folder_name.split(cfg.folder_name_delimiter)
     
     metadata = {
         'sample_code': folder_name,
-        'botanical': cfg.default_unknown_value,# So it does not crash
+        'botanical': cfg.default_unknown_value,
         'geographic': cfg.default_unknown_value
     }
     
@@ -38,72 +37,95 @@ def parse_folder_metadata(folder_name: str, cfg: ProjectConfig) -> dict:
 
 def create_dataset(cfg: ProjectConfig):
     data_rows = []
-    feature_names = None                    
-    primary_key= 1
+    feature_names = None
+    primary_key = 1
     
-    logger.info("Starting dataset creation...")
-    logger.info(f"Target Directory: {cfg.raw_data_path}")
+    validator = SpectralValidator(cfg)
+    
+    logger.info("Starting dataset creation pipeline...")
+    logger.info(f"Source: {cfg.raw_data_path}")
 
     if not os.path.exists(cfg.raw_data_path):
-        logger.error(f"CRITICAL: The data wasn't found on: {cfg.raw_data_path}")
+        logger.error(f"CRITICAL: Path not found: {cfg.raw_data_path}")
+        raise FileNotFoundError(f"Missing Data Directory")
+    
+    all_items = os.listdir(cfg.raw_data_path)
+    all_folders = [d for d in all_items if os.path.isdir(os.path.join(cfg.raw_data_path, d))]
+    
+    valid_folders = []
+    for folder in all_folders:
+        res = validator.validate_folder_name(folder)
+        if res.is_valid:
+            valid_folders.append(folder)
+        else:
+            logger.debug(f"Skipping folder '{folder}': {res.message}")
 
-        raise FileNotFoundError(f"Missing Data Directory: {cfg.raw_data_path}")
-    
-    classes = [d for d in os.listdir(cfg.raw_data_path) if os.path.isdir(os.path.join(cfg.raw_data_path, d))]
-    
-    if not classes:
-        logger.warning(f"The folder {cfg.raw_data_path} is empty.")
-        return False
-    
-    logger.info(f"Number of sample folders found: {len(classes)}. Beginning processing...")
+    if not valid_folders:
+        logger.warning("No valid sample folders found based on the configuration pattern.")
+        return
 
-    for folder_name in tqdm(classes, desc="Processing Samples", unit="folder"):
+    logger.info(f"Found {len(valid_folders)} valid sample folders. Processing...")
+
+    for folder_name in tqdm(valid_folders, desc="Processing Samples", unit="folder"):
+        
         class_folder = os.path.join(cfg.raw_data_path, folder_name)
         files = os.listdir(class_folder)
         
         meta = parse_folder_metadata(folder_name, cfg)
-  
-        processed_count = 0
 
         for filename in files:
-            if "Error" in filename or "error" in filename:
-                continue
+            
+            val_file = validator.validate_filename(filename)
+            if not val_file.is_valid:
+                continue 
 
-            if filename.lower().endswith(cfg.file_extension.lower()): # This way it understands .TXT in Linux-Python format
-                file_path = os.path.join(class_folder, filename)
+            file_path = os.path.join(class_folder, filename)
+            
+            try: 
+                df = pd.read_csv(
+                    file_path, 
+                    sep=cfg.separator, 
+                    skiprows=cfg.skip_lines, 
+                    header=None, 
+                    engine='python', 
+                    encoding='latin-1', 
+                    usecols=[0, cfg.data_col_index]
+                ) 
                 
-                try: 
-                    df = pd.read_csv(file_path, sep=cfg.separator, skiprows=cfg.skip_lines, header=None, engine='python', encoding='latin-1', usecols=[0, cfg.data_col_index]) 
-                    
-                    df = df.dropna()
-                                             
-                    wavelengths = df[0].values
-                    values = df[cfg.data_col_index].values
-                    
-                    if feature_names is None:
-                        feature_names = [f"wl_{w:.3f}" for w in wavelengths]
-                        logger.info(f"Setup complete. Features detected.")
+                df = df.dropna()
 
-                    if len(values) != len(feature_names):
-                        continue
-                    
-                    row = {
-                        'id': primary_key,
-                        'sample_code': meta['sample_code'],
-                        'botanical': meta['botanical'],
-                        'geographic': meta['geographic'],
-                        'folder_name': folder_name,
-                        'filename': filename
-                    }
-                    row.update(dict(zip(feature_names, values)))
-                    
-                    data_rows.append(row)
-                    
-                    processed_count += 1
-                    primary_key += 1
-                    
-                except Exception as e:
-                    logger.debug(f"Failed to read: {filename}. Cause: {e}")
+                val_struct = validator.validate_structure(df)
+                if not val_struct.is_valid:
+                    logger.warning(f"Structure Error in {filename}: {val_struct.message}")
+                    continue
+                                             
+                wavelengths = df[0].values
+                values = df[cfg.data_col_index].values
+                
+                if feature_names is None:
+                    feature_names = [f"wl_{w:.3f}" for w in wavelengths]
+                    logger.info(f"Reference geometry set. Features: {len(feature_names)}")
+
+                val_consist = validator.validate_consistency(len(values))
+                if not val_consist.is_valid:
+                    logger.debug(f"Skipping {filename}: {val_consist.message}")
+                    continue
+                
+                row = {
+                    'id': primary_key,
+                    'sample_code': meta['sample_code'],
+                    'botanical': meta['botanical'],
+                    'geographic': meta['geographic'],
+                    'folder_name': folder_name,
+                    'filename': filename
+                }
+                row.update(dict(zip(feature_names, values)))
+                
+                data_rows.append(row)
+                primary_key += 1
+                
+            except Exception as e:
+                logger.warning(f"Failed to read file: {filename}. Cause: {e}")
 
     if data_rows:
         print("\n") 
@@ -111,20 +133,19 @@ def create_dataset(cfg: ProjectConfig):
         final_df = pd.DataFrame(data_rows)
         
         metadata_cols = ['id', 'sample_code', 'botanical', 'geographic', 'folder_name', 'filename']
-        wl_cols = [c for c in final_df.columns if c.startswith('wl_')]
+        wl_cols = [c for c in final_df.columns if str(c).startswith('wl_')]
         
         final_df = final_df[metadata_cols + wl_cols]
         
         os.makedirs(os.path.dirname(cfg.output_path), exist_ok=True)
-        
         final_df.to_csv(cfg.output_path, index=False)
         
         logger.info("------------------------------------------------")
-        logger.info("PROCESS COMPLETED SUCCESSFULLY") #GGS
+        logger.info("PROCESS COMPLETED SUCCESSFULLY")
         logger.info(f"Dataset saved at: {cfg.output_path}")
         logger.info(f"Dimensions: {final_df.shape} (Rows, Columns)")
     else:
-        logger.warning("The list of data rows is empty.")
+        logger.warning("The list of data rows is empty. No valid data extracted.")
 
 if __name__ == "__main__":
     create_dataset(config)
