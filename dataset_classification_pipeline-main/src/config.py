@@ -30,4 +30,9 @@ class ProjectConfig:
     folder_name_delimiter: str = '_'
     default_unknown_value: str = "Unknown" 
 
+    filename_pattern: str = r"^.+_[a-zA-Z]+_[a-zA-Z]+.*__\d+\.txt$"
+    
+    foldername_pattern: str = r"^.+_[a-zA-Z]+_[a-zA-Z]+.*"
+
+
 config = ProjectConfig()
