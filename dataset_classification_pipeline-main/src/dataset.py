@@ -4,13 +4,14 @@ import numpy as np
 import logging
 import sys
 from tqdm import tqdm
+from pydantic import ValidationError
 from src.config import config, ProjectConfig
 from src.validation import SpectralValidator, SpectralRecord
 
 os.makedirs(config.log_dir, exist_ok=True) 
 
 logging.basicConfig(
-    level=logging.INFO, 
+    level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s',
     handlers=[
         logging.StreamHandler(sys.stdout), 
@@ -19,7 +20,9 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)    
 
+
 def parse_folder_metadata(folder_name: str, cfg: ProjectConfig) -> dict:
+   
     parts = folder_name.split(cfg.folder_name_delimiter)
     
     metadata = {
@@ -43,11 +46,11 @@ def create_dataset(cfg: ProjectConfig):
     validator = SpectralValidator(cfg)
     
     logger.info("Starting dataset creation pipeline...")
-    logger.info(f"Source: {cfg.raw_data_path}")
+    logger.info(f"Source Directory: {cfg.raw_data_path}")
 
     if not os.path.exists(cfg.raw_data_path):
         logger.error(f"CRITICAL: Path not found: {cfg.raw_data_path}")
-        raise FileNotFoundError(f"Missing Data Directory")
+        raise FileNotFoundError("Missing Data Directory")
     
     all_items = os.listdir(cfg.raw_data_path)
     all_folders = [d for d in all_items if os.path.isdir(os.path.join(cfg.raw_data_path, d))]
@@ -69,8 +72,12 @@ def create_dataset(cfg: ProjectConfig):
     for folder_name in tqdm(valid_folders, desc="Processing Samples", unit="folder"):
         
         class_folder = os.path.join(cfg.raw_data_path, folder_name)
-        files = os.listdir(class_folder)
-        
+        try:
+            files = os.listdir(class_folder)
+        except Exception as e:
+            logger.warning(f"Could not open folder {folder_name}: {e}")
+            continue
+
         meta = parse_folder_metadata(folder_name, cfg)
 
         for filename in files:
@@ -81,7 +88,7 @@ def create_dataset(cfg: ProjectConfig):
 
             file_path = os.path.join(class_folder, filename)
             
-            try: 
+            try:
                 df = pd.read_csv(
                     file_path, 
                     sep=cfg.separator, 
@@ -96,7 +103,7 @@ def create_dataset(cfg: ProjectConfig):
 
                 val_struct = validator.validate_structure(df)
                 if not val_struct.is_valid:
-                    logger.warning(f"Structure Error in {filename}: {val_struct.message}")
+                    logger.debug(f"Structure Error in {filename}: {val_struct.message}")
                     continue
                                              
                 wavelengths = df[0].values
@@ -111,17 +118,23 @@ def create_dataset(cfg: ProjectConfig):
                     logger.debug(f"Skipping {filename}: {val_consist.message}")
                     continue
                 
-                row = {
+                row_dict = {
                     'id': primary_key,
                     'sample_code': meta['sample_code'],
                     'botanical': meta['botanical'],
-                    'geographic': meta['geographic']
+                    'geographic': meta['geographic'],
+                    'folder_name': folder_name,
+                    'filename': filename
                 }
-                row.update(dict(zip(feature_names, values)))
+                row_dict.update(dict(zip(feature_names, values)))
                 
-                data_rows.append(row)
+                record = SpectralRecord(**row_dict)
+                
+                data_rows.append(record.model_dump())
                 primary_key += 1
                 
+            except ValidationError as ve:
+                logger.warning(f"Data Validation Failed for {filename}: {ve}")
             except Exception as e:
                 logger.warning(f"Failed to read file: {filename}. Cause: {e}")
 
@@ -129,8 +142,8 @@ def create_dataset(cfg: ProjectConfig):
         print("\n") 
         logger.info(f"Creating final dataframe with {len(data_rows)} records...")
         final_df = pd.DataFrame(data_rows)
-        
-        metadata_cols = ['id', 'sample_code', 'botanical', 'geographic']
+    
+        metadata_cols = ['id', 'sample_code', 'botanical', 'geographic', 'folder_name', 'filename']
         wl_cols = [c for c in final_df.columns if str(c).startswith('wl_')]
         
         final_df = final_df[metadata_cols + wl_cols]
