@@ -1,8 +1,3 @@
-# Spectral Classification Pipeline
-
-## ETL Process Flowchart
-
-```mermaid
 flowchart TD
     %% --- Setup Phase ---
     Start([Start: create_dataset]) --> InitVars[Init: data_rows, feature_names]
@@ -31,17 +26,17 @@ flowchart TD
         ListFiles --> InnerLoop{For each File}
         InnerLoop --> ValFile[validator.validate_filename]
         ValFile -- Invalid --> InnerLoop
-        ValFile -- Valid --> ReadCSV[pd.read_csv (Latin-1)]
+        ValFile -- Valid --> ReadCSV["pd.read_csv (Latin-1)"]
         
         ReadCSV -- Error --> CatchEx[Catch Exception] --> LogWarnFile[Log Warning] --> InnerLoop
-        ReadCSV -- Success --> DropNA[df.dropna()]
+        ReadCSV -- Success --> DropNA["df.dropna()"]
         
         DropNA --> ValStruct[validator.validate_structure]
-        ValStruct -- Invalid --> LogWarnStruct[Log Warning] --> InnerLoop
+        ValStruct -- Invalid --> LogWarnStruct[Log Warning: Structure Error] --> InnerLoop
         ValStruct -- Valid --> ExtractVals[Extract Wavelengths & Values]
         
         ExtractVals --> CheckRef{First File?}
-        CheckRef -- Yes --> SetRef[Set Feature Names] --> ValConsist
+        CheckRef -- Yes --> SetRef[Set Reference Feature Names] --> ValConsist
         CheckRef -- No --> ValConsist[validator.validate_consistency]
         
         ValConsist -- Invalid --> LogDebugDim[Log Debug: Mismatch] --> InnerLoop
@@ -59,12 +54,14 @@ flowchart TD
     CheckData -- No --> LogWarnEmpty[Log Warning: No data rows] --> Stop
     CheckData -- Yes --> CreateDF[Create Pandas DataFrame]
     
-    CreateDF --> SortCols[Reorder Columns (Meta + Wavelengths)]
-    SortCols --> MakeDir[os.makedirs(processed)]
+    CreateDF --> SortCols["Reorder Columns (Meta + Wavelengths)"]
+    SortCols --> MakeDir[os.makedirs processed]
     MakeDir --> SaveCSV[df.to_csv]
     SaveCSV --> LogSuccess[Log Success] --> Stop
     
     %% Colors
     style Start fill:#90EE90,stroke:#333
     style Stop fill:#FF7F7F,stroke:#333
-    style Processing fill:#E6F3FF,stroke:#333,stroke-dasharray: 5 5
+    style Processing fill:#F0F8FF,stroke:#333,stroke-dasharray: 5 5
+    style RaiseError fill:#FFB6C1
+    style LogSuccess fill:#90EE90
