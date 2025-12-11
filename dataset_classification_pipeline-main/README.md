@@ -1,3 +1,4 @@
+```mermaid
 flowchart TD
     %% --- Setup Phase ---
     Start([Start: create_dataset]) --> InitVars[Init: data_rows, feature_names]
@@ -65,3 +66,4 @@ flowchart TD
     style Processing fill:#F0F8FF,stroke:#333,stroke-dasharray: 5 5
     style RaiseError fill:#FFB6C1
     style LogSuccess fill:#90EE90
+```
