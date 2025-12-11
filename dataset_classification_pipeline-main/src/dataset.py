@@ -5,8 +5,8 @@ import logging
 import sys
 from tqdm import tqdm
 from pydantic import ValidationError
-from src.config import config, ProjectConfig
-from src.validation import SpectralValidator, SpectralRecord
+from config import config, ProjectConfig
+from validation import SpectralValidator, SpectralRecord
 
 os.makedirs(config.log_dir, exist_ok=True) 
 
@@ -122,9 +122,7 @@ def create_dataset(cfg: ProjectConfig):
                     'id': primary_key,
                     'sample_code': meta['sample_code'],
                     'botanical': meta['botanical'],
-                    'geographic': meta['geographic'],
-                    'folder_name': folder_name,
-                    'filename': filename
+                    'geographic': meta['geographic']
                 }
                 row_dict.update(dict(zip(feature_names, values)))
                 
@@ -143,7 +141,7 @@ def create_dataset(cfg: ProjectConfig):
         logger.info(f"Creating final dataframe with {len(data_rows)} records...")
         final_df = pd.DataFrame(data_rows)
     
-        metadata_cols = ['id', 'sample_code', 'botanical', 'geographic', 'folder_name', 'filename']
+        metadata_cols = ['id', 'sample_code', 'botanical', 'geographic']
         wl_cols = [c for c in final_df.columns if str(c).startswith('wl_')]
         
         final_df = final_df[metadata_cols + wl_cols]

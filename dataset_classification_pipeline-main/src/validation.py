@@ -3,7 +3,7 @@ import logging
 import re
 from dataclasses import dataclass
 import pandas as pd
-from src.config import config, ProjectConfig
+from config import config, ProjectConfig
 
 logger = logging.getLogger(__name__)
 
@@ -35,8 +35,11 @@ class SpectralValidator:
         if df.empty:
             return ValidationResult(False, "Empty DataFrame")
         
-        if df.shape[1] <= self.cfg.data_col_index:
-            return ValidationResult(False, "Insufficient columns")
+        if df.shape[1] < 2: 
+            return ValidationResult(
+                False, 
+                f"Insufficient columns: Found {df.shape[1]}, expected at least 2 (Wave & Value)"
+            )
             
         return ValidationResult(True)
 
