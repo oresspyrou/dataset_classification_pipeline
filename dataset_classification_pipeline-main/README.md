@@ -63,7 +63,7 @@ flowchart TD
     %% Colors
     style Start fill:#90EE90,stroke:#333
     style Stop fill:#FF7F7F,stroke:#333
-    style Processing fill:#F0F8FF,stroke:#333,stroke-dasharray: 5 5
+    style Processing fill:stroke:#333,stroke-dasharray: 5 5
     style RaiseError fill:#FFB6C1
     style LogSuccess fill:#90EE90
 ```
