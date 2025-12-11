@@ -5,14 +5,15 @@ import logging
 import sys
 from tqdm import tqdm
 from pydantic import ValidationError
-from config import config, ProjectConfig
-from validation import SpectralValidator, SpectralRecord
+from src.config import config, ProjectConfig
+from src.validation import SpectralValidator, SpectralRecord
 
 os.makedirs(config.log_dir, exist_ok=True) 
 
 logging.basicConfig(
-    level=logging.INFO,
+    level=logging.DEBUG,
     format='%(asctime)s - %(levelname)s - %(message)s',
+    force=True,
     handlers=[
         logging.StreamHandler(sys.stdout), 
         logging.FileHandler(config.log_file, mode='a', encoding='utf-8')
@@ -122,7 +123,9 @@ def create_dataset(cfg: ProjectConfig):
                     'id': primary_key,
                     'sample_code': meta['sample_code'],
                     'botanical': meta['botanical'],
-                    'geographic': meta['geographic']
+                    'geographic': meta['geographic'],
+                    'folder_name': folder_name,
+                    'filename': filename
                 }
                 row_dict.update(dict(zip(feature_names, values)))
                 

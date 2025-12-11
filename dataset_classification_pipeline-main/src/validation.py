@@ -3,7 +3,7 @@ import logging
 import re
 from dataclasses import dataclass
 import pandas as pd
-from config import config, ProjectConfig
+from src.config import config, ProjectConfig
 
 logger = logging.getLogger(__name__)
 

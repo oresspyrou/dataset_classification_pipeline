@@ -23,7 +23,7 @@ class ProjectConfig:
         return os.path.join(self.log_dir, 'dataset_creation_pipeline.log')
 
     skip_lines: int = 8
-    data_col_index: int = 3
+    data_col_index: int = 1
     separator: str = ';'
     file_extension: str = '.txt'
     
