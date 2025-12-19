@@ -1,6 +1,7 @@
 from pydantic import BaseModel, Field, field_validator, ConfigDict
 import logging
 import re
+import numpy as np
 from dataclasses import dataclass
 import pandas as pd
 from src.config import config, ProjectConfig
@@ -15,7 +16,7 @@ class ValidationResult:
 class SpectralValidator:
     def __init__(self, cfg: ProjectConfig):
         self.cfg = cfg
-        self.reference_len = None
+        self.reference_wavelengths = None  # Εδώ θα αποθηκεύσουμε τον "Χάρακα" (τον άξονα Χ)
 
     def validate_folder_name(self, folder_name: str) -> ValidationResult:
         if not re.match(self.cfg.foldername_pattern, folder_name, re.IGNORECASE):
@@ -43,16 +44,28 @@ class SpectralValidator:
             
         return ValidationResult(True)
 
-    def validate_consistency(self, num_values: int) -> ValidationResult:
+    def validate_consistency(self, wavelengths: np.ndarray) -> ValidationResult:
+        """
+        Ελέγχει αν τα μήκη κύματος (features) είναι ΤΑΥΤΟΣΗΜΑ με το πρώτο αρχείο.
+        """
+        num_values = len(wavelengths)
+        
         if num_values <= 0:
             return ValidationResult(False, f"Empty values: {num_values}")
 
-        if self.reference_len is None:
-            self.reference_len = num_values
+        # Αν είναι το πρώτο αρχείο που βλέπουμε, το ορίζουμε ως Πρότυπο
+        if self.reference_wavelengths is None:
+            self.reference_wavelengths = wavelengths
             return ValidationResult(True)
         
-        if num_values != self.reference_len:
-            return ValidationResult(False, f"Mismatch: Found {num_values}, expected {self.reference_len}")
+        # Έλεγχος 1: Ίδιο Πλήθος σημείων
+        if num_values != len(self.reference_wavelengths):
+            return ValidationResult(False, f"Length Mismatch: Found {num_values}, expected {len(self.reference_wavelengths)}")
+        
+        # Έλεγχος 2: Ίδιες Τιμές (με ανοχή 0.01 nm)
+        if not np.allclose(wavelengths, self.reference_wavelengths, atol=1e-2):
+            diff = np.abs(wavelengths - self.reference_wavelengths).max()
+            return ValidationResult(False, f"Feature Mismatch: Wavelengths differ by max {diff:.4f} nm")
         
         return ValidationResult(True)
 

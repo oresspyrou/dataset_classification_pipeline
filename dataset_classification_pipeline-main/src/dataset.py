@@ -11,32 +11,26 @@ from src.validation import SpectralValidator, SpectralRecord
 os.makedirs(config.log_dir, exist_ok=True) 
 
 logging.basicConfig(
-    level=logging.DEBUG,
+    level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s',
-    force=True,
     handlers=[
         logging.StreamHandler(sys.stdout), 
-        logging.FileHandler(config.log_file, mode='a', encoding='utf-8')
+        logging.FileHandler(config.log_file, mode='w', encoding='utf-8')
     ]
 )
 logger = logging.getLogger(__name__)    
 
-
 def parse_folder_metadata(folder_name: str, cfg: ProjectConfig) -> dict:
-   
     parts = folder_name.split(cfg.folder_name_delimiter)
-    
     metadata = {
         'sample_code': folder_name,
         'botanical': cfg.default_unknown_value,
         'geographic': cfg.default_unknown_value
     }
-    
     if len(parts) >= 3:
         metadata['sample_code'] = parts[0]
         metadata['botanical'] = parts[1]
         metadata['geographic'] = parts[2]
-        
     return metadata
 
 def create_dataset(cfg: ProjectConfig):
@@ -71,7 +65,6 @@ def create_dataset(cfg: ProjectConfig):
     logger.info(f"Found {len(valid_folders)} valid sample folders. Processing...")
 
     for folder_name in tqdm(valid_folders, desc="Processing Samples", unit="folder"):
-        
         class_folder = os.path.join(cfg.raw_data_path, folder_name)
         try:
             files = os.listdir(class_folder)
@@ -82,7 +75,6 @@ def create_dataset(cfg: ProjectConfig):
         meta = parse_folder_metadata(folder_name, cfg)
 
         for filename in files:
-            
             val_file = validator.validate_filename(filename)
             if not val_file.is_valid:
                 continue 
@@ -90,6 +82,7 @@ def create_dataset(cfg: ProjectConfig):
             file_path = os.path.join(class_folder, filename)
             
             try:
+                # ΔΙΑΒΑΖΟΥΜΕ 2 ΣΤΗΛΕΣ (Wavelength + Value)
                 df = pd.read_csv(
                     file_path, 
                     sep=cfg.separator, 
@@ -110,14 +103,16 @@ def create_dataset(cfg: ProjectConfig):
                 wavelengths = df[0].values
                 values = df[cfg.data_col_index].values
                 
+                # --- ΝΕΟΣ ΕΛΕΓΧΟΣ: Περνάμε ΟΛΑ τα wavelengths ---
+                val_consist = validator.validate_consistency(wavelengths)
+                if not val_consist.is_valid:
+                    logger.warning(f"Consistency Error in {filename}: {val_consist.message}")
+                    continue
+                # ------------------------------------------------
+
                 if feature_names is None:
                     feature_names = [f"wl_{w:.3f}" for w in wavelengths]
                     logger.info(f"Reference geometry set. Features: {len(feature_names)}")
-
-                val_consist = validator.validate_consistency(len(values))
-                if not val_consist.is_valid:
-                    logger.debug(f"Skipping {filename}: {val_consist.message}")
-                    continue
                 
                 row_dict = {
                     'id': primary_key,
@@ -130,12 +125,11 @@ def create_dataset(cfg: ProjectConfig):
                 row_dict.update(dict(zip(feature_names, values)))
                 
                 record = SpectralRecord(**row_dict)
-                
                 data_rows.append(record.model_dump())
                 primary_key += 1
                 
             except ValidationError as ve:
-                logger.warning(f"Data Validation Failed for {filename}: {ve}")
+                logger.warning(f"Validation Failed for {filename}: {ve}")
             except Exception as e:
                 logger.warning(f"Failed to read file: {filename}. Cause: {e}")
 
@@ -152,12 +146,11 @@ def create_dataset(cfg: ProjectConfig):
         os.makedirs(os.path.dirname(cfg.output_path), exist_ok=True)
         final_df.to_csv(cfg.output_path, index=False)
         
-        logger.info("------------------------------------------------")
         logger.info("PROCESS COMPLETED SUCCESSFULLY")
         logger.info(f"Dataset saved at: {cfg.output_path}")
-        logger.info(f"Dimensions: {final_df.shape} (Rows, Columns)")
+        logger.info(f"Dimensions: {final_df.shape}")
     else:
-        logger.warning("The list of data rows is empty. No valid data extracted.")
+        logger.warning("No valid data extracted.")
 
 if __name__ == "__main__":
     create_dataset(config)
