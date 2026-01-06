@@ -5,8 +5,8 @@ import logging
 import sys
 from tqdm import tqdm
 from pydantic import ValidationError
-from src.config import config, ProjectConfig
-from src.validation import SpectralValidator, SpectralRecord
+from config import config, ProjectConfig
+from validation import SpectralValidator, SpectralRecord
 
 os.makedirs(config.log_dir, exist_ok=True) 
 
@@ -19,6 +19,7 @@ logging.basicConfig(
     ]
 )
 logger = logging.getLogger(__name__)    
+
 
 def parse_folder_metadata(folder_name: str, cfg: ProjectConfig) -> dict:
     parts = folder_name.split(cfg.folder_name_delimiter)
@@ -40,8 +41,9 @@ def create_dataset(cfg: ProjectConfig):
     
     validator = SpectralValidator(cfg)
     
-    logger.info("Starting dataset creation pipeline...")
+    logger.info("Starting dataset creation pipeline with NORMALIZATION...")
     logger.info(f"Source Directory: {cfg.raw_data_path}")
+    logger.info(f"Using Data Column Index: {cfg.data_col_index}")
 
     if not os.path.exists(cfg.raw_data_path):
         logger.error(f"CRITICAL: Path not found: {cfg.raw_data_path}")
@@ -82,7 +84,7 @@ def create_dataset(cfg: ProjectConfig):
             file_path = os.path.join(class_folder, filename)
             
             try:
-                # ΔΙΑΒΑΖΟΥΜΕ 2 ΣΤΗΛΕΣ (Wavelength + Value)
+                # Ανάγνωση του CSV (Wavelengths + Selected Data Column)
                 df = pd.read_csv(
                     file_path, 
                     sep=cfg.separator, 
@@ -103,17 +105,18 @@ def create_dataset(cfg: ProjectConfig):
                 wavelengths = df[0].values
                 values = df[cfg.data_col_index].values
                 
-                # --- ΝΕΟΣ ΕΛΕΓΧΟΣ: Περνάμε ΟΛΑ τα wavelengths ---
+                # --- ΕΛΕΓΧΟΣ ΣΥΝΕΠΕΙΑΣ (Consistency Check) ---
                 val_consist = validator.validate_consistency(wavelengths)
                 if not val_consist.is_valid:
                     logger.warning(f"Consistency Error in {filename}: {val_consist.message}")
                     continue
-                # ------------------------------------------------
+                
 
                 if feature_names is None:
                     feature_names = [f"wl_{w:.3f}" for w in wavelengths]
                     logger.info(f"Reference geometry set. Features: {len(feature_names)}")
                 
+                # Δημιουργία της εγγραφής
                 row_dict = {
                     'id': primary_key,
                     'sample_code': meta['sample_code'],
@@ -138,6 +141,7 @@ def create_dataset(cfg: ProjectConfig):
         logger.info(f"Creating final dataframe with {len(data_rows)} records...")
         final_df = pd.DataFrame(data_rows)
     
+        # Επιλογή στηλών για το τελικό αρχείο (χωρίς filename/folder_name)
         metadata_cols = ['id', 'sample_code', 'botanical', 'geographic']
         wl_cols = [c for c in final_df.columns if str(c).startswith('wl_')]
         
@@ -146,11 +150,12 @@ def create_dataset(cfg: ProjectConfig):
         os.makedirs(os.path.dirname(cfg.output_path), exist_ok=True)
         final_df.to_csv(cfg.output_path, index=False)
         
+        logger.info("------------------------------------------------")
         logger.info("PROCESS COMPLETED SUCCESSFULLY")
         logger.info(f"Dataset saved at: {cfg.output_path}")
-        logger.info(f"Dimensions: {final_df.shape}")
+        logger.info(f"Dimensions: {final_df.shape} (Rows, Columns)")
     else:
-        logger.warning("No valid data extracted.")
+        logger.warning("The list of data rows is empty. No valid data extracted.")
 
 if __name__ == "__main__":
     create_dataset(config)
